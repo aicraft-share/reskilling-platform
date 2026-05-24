@@ -11,7 +11,11 @@
         </div>
     </x-slot>
 
-    <!-- Search & Filter -->
+    <div class="py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <x-credentials-card :credentials="session('generated_credentials')" />
+
+            <!-- Search & Filter -->
     <div class="mb-6 bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
         <form method="GET" action="{{ route('admin.companies.index') }}"
             class="flex flex-col md:flex-row gap-4 items-end">
@@ -42,6 +46,17 @@
                     @endforeach
                 </select>
             </div>
+            <div class="w-full md:w-48">
+                <x-input-label for="payment_status" :value="__('支払い状況')" />
+                <select id="payment_status" name="payment_status"
+                    class="mt-1 block w-full border-slate-300 focus:border-blue-500 focus:ring-blue-500 rounded-md shadow-sm text-sm">
+                    <option value="">全て</option>
+                    <option value="not_billed" {{ request('payment_status') == 'not_billed' ? 'selected' : '' }}>未請求</option>
+                    <option value="billed" {{ request('payment_status') == 'billed' ? 'selected' : '' }}>請求済み</option>
+                    <option value="waiting_payment" {{ request('payment_status') == 'waiting_payment' ? 'selected' : '' }}>支払い待ち</option>
+                    <option value="paid" {{ request('payment_status') == 'paid' ? 'selected' : '' }}>支払済</option>
+                </select>
+            </div>
             <div class="flex gap-2">
                 <x-primary-button>
                     {{ __('検索') }}
@@ -63,7 +78,7 @@
                         <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                             <a href="{{ route('admin.companies.index', array_merge(request()->query(), ['sort' => 'name', 'direction' => request('direction') === 'asc' ? 'desc' : 'asc'])) }}"
                                 class="group inline-flex items-center space-x-1 hover:text-slate-700">
-                                <span>企业名</span>
+                                <span>企業名</span>
                                 @if(request('sort') === 'name')
                                     <span class="text-blue-600">{{ request('direction') === 'asc' ? '↑' : '↓' }}</span>
                                 @else
@@ -97,67 +112,102 @@
                                 @endif
                             </a>
                         </th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            <a href="{{ route('admin.companies.index', array_merge(request()->query(), ['sort' => 'training_end_date', 'direction' => request('direction') === 'asc' ? 'desc' : 'asc'])) }}"
+                                class="group inline-flex items-center space-x-1 hover:text-slate-700">
+                                <span>研修終了日</span>
+                                @if(request('sort') === 'training_end_date')
+                                    <span class="text-blue-600">{{ request('direction') === 'asc' ? '↑' : '↓' }}</span>
+                                @else
+                                    <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition">↕</span>
+                                @endif
+                            </a>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            <a href="{{ route('admin.companies.index', array_merge(request()->query(), ['sort' => 'contract_amount', 'direction' => request('direction') === 'asc' ? 'desc' : 'asc'])) }}"
+                                class="group inline-flex items-center space-x-1 hover:text-slate-700">
+                                <span>契約金額</span>
+                                @if(request('sort') === 'contract_amount')
+                                    <span class="text-blue-600">{{ request('direction') === 'asc' ? '↑' : '↓' }}</span>
+                                @else
+                                    <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition">↕</span>
+                                @endif
+                            </a>
+                        </th>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            <a href="{{ route('admin.companies.index', array_merge(request()->query(), ['sort' => 'payment_status', 'direction' => request('direction') === 'asc' ? 'desc' : 'asc'])) }}"
+                                class="group inline-flex items-center space-x-1 hover:text-slate-700">
+                                <span>支払い状況</span>
+                                @if(request('sort') === 'payment_status')
+                                    <span class="text-blue-600">{{ request('direction') === 'asc' ? '↑' : '↓' }}</span>
+                                @else
+                                    <span class="text-slate-300 opacity-0 group-hover:opacity-100 transition">↕</span>
+                                @endif
+                            </a>
+                        </th>
                         <th class="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">
                             操作</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-slate-200">
                     @forelse ($companies as $company)
-                                        <tr class="hover:bg-slate-50 transition">
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 cursor-pointer text-blue-600 hover:text-blue-800 hover:underline"
-                                                @click="showModal = true; selectedCompany = {{ json_encode([
-                            'name' => $company->name,
-                            'description' => $company->business_description ?? '未設定',
-                            'status_label' => $company->status_label,
-                            'teacher_name' => $company->teacher ? $company->teacher->name : '未割り当て',
-                            'student_count' => $company->students_count . '名',
-                            'start_date' => ($company->status === 'free_trial') ? 'ー' : ($company->contract_start_date ? $company->contract_start_date->format('Y-m-d') : '未設定')
-                        ]) }}">
-                                                {{ $company->name }}
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap">
-                                                <span class="px-2.5 py-0.5 rounded-full text-xs font-medium {{ $company->status_class }}">
-                                                    {{ $company->status_label }}
-                                                </span>
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                                                @if($company->teacher)
-                                                    <div class="flex items-center">
-                                                        <span
-                                                            class="inline-block h-6 w-6 rounded-full ring-2 ring-white bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-800"
-                                                            title="{{ $company->teacher->name }}">
-                                                            {{ Str::limit($company->teacher->name, 1, '') }}
-                                                        </span>
-                                                        <span class="ml-2">{{ $company->teacher->name }}</span>
-                                                    </div>
-                                                @else
-                                                    <span class="text-slate-400 text-xs">未割り当て</span>
-                                                @endif
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                                                {{ $company->students_count }} 名
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                                                @if($company->status === 'free_trial')
-                                                    <span class="text-slate-400">ー</span>
-                                                @else
-                                                    {{ $company->contract_start_date ? $company->contract_start_date->format('Y-m-d') : '未設定' }}
-                                                @endif
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <a href="{{ route('admin.companies.edit', $company) }}"
-                                                    class="text-blue-600 hover:text-blue-900 mr-4">編集</a>
-                                                <form action="{{ route('admin.companies.destroy', $company) }}" method="POST"
-                                                    class="inline-block" onsubmit="return confirm('本当に削除しますか？');">
-                                                    @csrf
-                                                    @method('DELETE')
-                                                    <button type="submit" class="text-rose-600 hover:text-rose-900">削除</button>
-                                                </form>
-                                            </td>
-                                        </tr>
+                        @php
+                            $teacherDisplayNames = $company->teacher_names;
+                        @endphp
+                        <tr class="hover:bg-slate-50 transition">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 cursor-pointer text-blue-600 hover:text-blue-800 hover:underline"
+                                @click="showModal = true; selectedCompany = {{ json_encode([
+                                    'name' => $company->name,
+                                    'description' => $company->business_description ?? '未設定',
+                                    'status_label' => $company->status_label,
+                                    'teacher_name' => $teacherDisplayNames,
+                                    'student_count' => $company->students_count . '名',
+                                    'start_date' => $company->contract_start_date ? $company->contract_start_date->format('Y-m-d') : '-',
+                                    'end_date' => $company->training_end_date ? $company->training_end_date->format('Y-m-d') : '-',
+                                    'contract_amount' => $company->contract_amount !== null ? number_format($company->contract_amount) . '円' : '-',
+                                    'payment_status' => $company->payment_status_label,
+                                ]) }}">
+                                {{ $company->name }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2.5 py-0.5 rounded-full text-xs font-medium {{ $company->status_class }}">
+                                    {{ $company->status_label }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
+                                {{ $teacherDisplayNames }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                                {{ $company->students_count }} 名
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                                {{ $company->contract_start_date ? $company->contract_start_date->format('Y-m-d') : '-' }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
+                                {{ $company->training_end_date ? $company->training_end_date->format('Y-m-d') : '-' }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-900 font-medium">
+                                {{ $company->contract_amount !== null ? number_format($company->contract_amount) . '円' : '-' }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2.5 py-0.5 rounded-full text-xs font-medium {{ $company->payment_status_class }}">
+                                    {{ $company->payment_status_label }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <a href="{{ route('admin.companies.edit', $company) }}"
+                                    class="text-blue-600 hover:text-blue-900 mr-4">編集</a>
+                                <form action="{{ route('admin.companies.destroy', $company) }}" method="POST"
+                                    class="inline-block" onsubmit="return confirm('本当に削除しますか？');">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="text-rose-600 hover:text-rose-900">削除</button>
+                                </form>
+                            </td>
+                        </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-6 py-12 text-center text-slate-500 text-sm">
+                            <td colspan="9" class="px-6 py-12 text-center text-slate-500 text-sm">
                                 条件に一致する企業はありません。
                             </td>
                         </tr>
@@ -218,6 +268,18 @@
                                             <span class="font-bold text-slate-700">研修開始日</span>
                                             <span x-text="selectedCompany?.start_date"></span>
                                         </div>
+                                        <div class="flex justify-between border-b py-2">
+                                            <span class="font-bold text-slate-700">研修終了日</span>
+                                            <span x-text="selectedCompany?.end_date"></span>
+                                        </div>
+                                        <div class="flex justify-between border-b py-2">
+                                            <span class="font-bold text-slate-700">契約金額</span>
+                                            <span x-text="selectedCompany?.contract_amount"></span>
+                                        </div>
+                                        <div class="flex justify-between border-b py-2">
+                                            <span class="font-bold text-slate-700">支払い状況</span>
+                                            <span x-text="selectedCompany?.payment_status"></span>
+                                        </div>
                                         <div class="pt-2">
                                             <span class="font-bold text-slate-700 block mb-1">事業内容</span>
                                             <p x-text="selectedCompany?.description"
@@ -237,6 +299,8 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
         </div>
     </div>
 </x-app-layout>

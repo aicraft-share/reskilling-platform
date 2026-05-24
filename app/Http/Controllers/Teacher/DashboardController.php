@@ -16,7 +16,9 @@ class DashboardController extends Controller
         // Fetch upcoming meetings for companies assigned to this teacher
         // OR meetings created by this teacher (though usually they are linked to company)
         $upcomingMeetings = \App\Models\Meeting::whereHas('company', function ($query) use ($user) {
-            $query->where('teacher_id', $user->id);
+            $query->whereHas('teachers', function ($q) use ($user) {
+                $q->where('users.id', $user->id);
+            });
         })
             ->orWhere('created_by', $user->id) // Just in case
             ->where('scheduled_at', '>=', now())

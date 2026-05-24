@@ -21,6 +21,7 @@ class Meeting extends Model
         'zoom_start_url',
         'zoom_passcode',
         'created_by',
+        'meeting_log_id',
     ];
 
     protected $casts = [
@@ -45,5 +46,10 @@ class Meeting extends Model
     public function participants(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(MeetingParticipant::class);
+    }
+
+    public function meetingLog(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(MeetingLog::class);
     }
 }

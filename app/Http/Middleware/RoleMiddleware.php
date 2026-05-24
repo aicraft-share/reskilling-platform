@@ -16,15 +16,20 @@ class RoleMiddleware
      */
     public function handle(Request $request, Closure $next, string ...$roles): Response
     {
-        if (!Auth::check()) {
-            return redirect('login');
+        $adminUser = Auth::guard('admin')->user();
+        $webUser = Auth::guard('web')->user();
+
+        // If either persona has the required role, allow access
+        if ($adminUser && in_array($adminUser->role, $roles)) {
+            return $next($request);
         }
 
-        $user = Auth::user();
-
-        // Check if user has one of the allowed roles
-        if (in_array($user->role, $roles)) {
+        if ($webUser && in_array($webUser->role, $roles)) {
             return $next($request);
+        }
+
+        if (!$adminUser && !$webUser) {
+            return redirect('login');
         }
 
         abort(403, 'Unauthorized action.');

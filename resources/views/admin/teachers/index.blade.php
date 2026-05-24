@@ -11,12 +11,17 @@
         </div>
     </x-slot>
 
-    <div class="bg-white overflow-hidden shadow-sm rounded-xl border border-slate-200">
+    <div class="py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <x-credentials-card :credentials="session('generated_credentials')" />
+
+            <div class="bg-white overflow-hidden shadow-sm rounded-xl border border-slate-200">
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-slate-200">
                 <thead class="bg-slate-50">
                     <tr>
-                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            ログインID</th>
                         <th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">
                             <a href="{{ route('admin.teachers.index', array_merge(request()->query(), ['sort' => 'name', 'direction' => request('direction') === 'asc' ? 'desc' : 'asc'])) }}"
                                 class="group inline-flex items-center space-x-1 hover:text-slate-700">
@@ -54,6 +59,9 @@
                 <tbody class="bg-white divide-y divide-slate-200">
                     @forelse ($teachers as $teacher)
                         <tr class="hover:bg-slate-50 transition">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-semibold text-blue-700 font-mono">{{ $teacher->login_id }}</div>
+                            </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm font-medium text-slate-900">{{ $teacher->name }}</div>
                                 <div class="text-xs text-slate-500">{{ $teacher->email }}</div>
@@ -114,13 +122,17 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="px-6 py-12 text-center text-slate-500 text-sm">
+                            <td colspan="7" class="px-6 py-12 text-center text-slate-500 text-sm">
                                 登録されている講師はありません。
                             </td>
                         </tr>
                     @endforelse
                 </tbody>
             </table>
+        </div>
+    </div>
+                </div>
+            </div>
         </div>
     </div>
 </x-app-layout>

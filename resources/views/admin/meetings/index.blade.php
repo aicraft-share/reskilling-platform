@@ -82,10 +82,10 @@
                                                 {{ $meeting->title }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                                                {{ $meeting->company->name }}
+                                                {{ $meeting->company?->name ?? '(削除済み企業)' }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                                                {{ $meeting->creator->name }}
+                                                {{ $meeting->creator?->name ?? '(削除済みユーザー)' }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
                                                 <span

@@ -11,11 +11,11 @@ use Carbon\Carbon;
 
 class ZoomSyncService
 {
-    protected $zoomService;
-
-    public function __construct(ZoomService $zoomService)
+    protected $zoomClient;
+ 
+    public function __construct(\App\Services\Zoom\ZoomClient $zoomClient)
     {
-        $this->zoomService = $zoomService;
+        $this->zoomClient = $zoomClient;
     }
 
     /**
@@ -29,7 +29,7 @@ class ZoomSyncService
             // 1. Get Past Meeting Details (Duration, End Time, UUID, Host)
             // Try-catch or check for null. If failed (e.g. scope issue), proceed to participants if possible.
             try {
-                $details = $this->zoomService->getPastMeeting($log->zoom_meeting_id);
+                $details = $this->zoomClient->getPastMeeting($log->zoom_meeting_id);
             } catch (\Exception $e) {
                 Log::warning("Zoom Get Past Meeting Details failed for ID: {$log->zoom_meeting_id}. Proceeding to participants. Error: " . $e->getMessage());
                 $details = null;
@@ -47,7 +47,7 @@ class ZoomSyncService
             // Use UUID if available (preferred for Metrics API), otherwise ID.
             $searchId = $details['uuid'] ?? $log->zoom_uuid ?? $log->zoom_meeting_id;
 
-            $participants = $this->zoomService->getParticipants($searchId);
+            $participants = $this->zoomClient->getParticipants($searchId);
 
             DB::beginTransaction();
 

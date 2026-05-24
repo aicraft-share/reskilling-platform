@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\User;
+use App\Services\AdminOperationLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
+use App\Utils\AuthUtils;
 
 class StudentController extends Controller
 {
@@ -58,24 +60,36 @@ class StudentController extends Controller
         return view('admin.students.create', compact('companies'));
     }
 
-    public function store(Request $request)
+    public function store(Request $request, AdminOperationLogger $operationLogger)
     {
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:' . User::class],
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
             'company_id' => ['required', 'exists:companies,id'],
         ]);
 
-        User::create([
+        $loginId = AuthUtils::generateLoginId(User::ROLE_STUDENT);
+        $password = AuthUtils::generatePassword();
+
+        $student = User::create([
             'name' => $request->name,
             'email' => $request->email,
-            'password' => Hash::make($request->password),
+            'login_id' => $loginId,
+            'password' => Hash::make($password),
             'role' => User::ROLE_STUDENT,
             'company_id' => $request->company_id,
         ]);
 
-        return redirect()->route('admin.students.index')->with('success', '生徒アカウントを作成しました。');
+        $operationLogger->log(
+            'create',
+            'student',
+            $student->id,
+            $student->name,
+            [],
+            $student->only(['name', 'email', 'company_id', 'role'])
+        );
+
+        return redirect()->route('admin.students.index')->with('success', "生徒アカウントを作成しました。ログインID: {$loginId} / パスワード: {$password}")->with('generated_credentials', ['login_id' => $loginId, 'password' => $password]);
     }
 
     public function edit(User $student)
@@ -84,8 +98,10 @@ class StudentController extends Controller
         return view('admin.students.edit', compact('student', 'companies'));
     }
 
-    public function update(Request $request, User $student)
+    public function update(Request $request, User $student, AdminOperationLogger $operationLogger)
     {
+        $before = $student->only(['name', 'email', 'company_id']);
+
         $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:users,email,' . $student->id],
@@ -101,14 +117,23 @@ class StudentController extends Controller
         if ($request->filled('password')) {
             $request->validate(['password' => ['confirmed', Rules\Password::defaults()]]);
             $student->update(['password' => Hash::make($request->password)]);
+            $before['password'] = '[REDACTED]';
         }
+
+        $after = $student->fresh()->only(['name', 'email', 'company_id']);
+        if ($request->filled('password')) {
+            $after['password'] = '[REDACTED]';
+        }
+        $operationLogger->log('update', 'student', $student->id, $student->name, $before, $after);
 
         return redirect()->route('admin.students.index')->with('success', '生徒情報を更新しました。');
     }
 
-    public function destroy(User $student)
+    public function destroy(User $student, AdminOperationLogger $operationLogger)
     {
+        $before = $student->only(['name', 'email', 'company_id', 'role']);
         $student->delete();
+        $operationLogger->log('delete', 'student', $student->id, $student->name, $before, []);
         return redirect()->route('admin.students.index')->with('success', '生徒アカウントを削除しました。');
     }
 }

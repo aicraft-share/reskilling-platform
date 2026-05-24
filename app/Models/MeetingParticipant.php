@@ -24,4 +24,9 @@ class MeetingParticipant extends Model
     {
         return $this->belongsTo(MeetingLog::class);
     }
+
+    public function student()
+    {
+        return $this->belongsTo(User::class, 'student_id');
+    }
 }

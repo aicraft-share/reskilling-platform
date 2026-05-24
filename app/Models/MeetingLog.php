@@ -65,6 +65,11 @@ class MeetingLog extends Model
         return $this->hasMany(MeetingLogParticipant::class);
     }
 
+    public function meeting()
+    {
+        return $this->hasOne(\App\Models\Meeting::class, 'meeting_log_id');
+    }
+
     public function getScheduledAtAttribute()
     {
         return $this->started_at;

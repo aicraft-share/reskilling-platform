@@ -57,19 +57,12 @@
                     </div>
                 </div>
 
-                <!-- Password -->
+                <!-- Automatic Credentials Notice -->
                 <div class="mt-6 border-t pt-6">
-                    <x-input-label for="password" :value="__('パスワード')" />
-                    <x-text-input id="password" class="block mt-1 w-full" type="password" name="password" required />
-                    <x-input-error :messages="$errors->get('password')" class="mt-2" />
-                </div>
-
-                <!-- Confirm Password -->
-                <div class="mt-4">
-                    <x-input-label for="password_confirmation" :value="__('パスワード（確認）')" />
-                    <x-text-input id="password_confirmation" class="block mt-1 w-full" type="password"
-                        name="password_confirmation" required />
-                    <x-input-error :messages="$errors->get('password_confirmation')" class="mt-2" />
+                    <div class="p-4 bg-blue-50 rounded-lg text-sm text-blue-700">
+                        <p class="font-bold mb-1">ログイン情報の自動生成</p>
+                        <p>ログインIDとパスワードは登録時に自動的に生成されます。登録完了後の画面に表示されますので、必ず控えて講師の方へお伝えください。</p>
+                    </div>
                 </div>
 
                 <!-- Assigned Companies (Optional Legacy Support) -->

@@ -29,22 +29,26 @@
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white divide-y divide-slate-200">
-                                    @foreach($meetings as $meeting)
+                                    @foreach($meetings as $item)
+                                        @php
+                                            $isMeeting = $item instanceof \App\Models\Meeting;
+                                            $log = $isMeeting ? $item->meetingLog : $item;
+                                        @endphp
                                         <tr>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
-                                                {{ $meeting->scheduled_at->format('Y/m/d H:i') }}
+                                                {{ $item->scheduled_at?->format('Y/m/d H:i') ?? '-' }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
-                                                {{ $meeting->title }}
+                                                {{ $item->title }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                                                {{ $meeting->company->name }}
+                                                {{ $item->company?->name ?? '(削除済み企業)' }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600">
-                                                {{ $meeting->creator->name }}
+                                                {{ $item->creator?->name ?? '(削除済みユーザー)' }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                                @if($meeting->scheduled_at->isFuture())
+                                                @if($item->scheduled_at?->isFuture())
                                                     <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
                                                         参加予定
                                                     </span>
@@ -55,29 +59,23 @@
                                                 @endif
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm">
-                                                @if($meeting instanceof \App\Models\MeetingLog)
-                                                    @if($meeting->transcript_summary)
-                                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                            要約あり
-                                                        </span>
-                                                    @elseif($meeting->transcript_status === 'failed')
-                                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                                            作成失敗
-                                                        </span>
-                                                    @else
-                                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                                            -
-                                                        </span>
-                                                    @endif
+                                                @if($log && $log->transcript_summary)
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                                        要約あり
+                                                    </span>
+                                                @elseif($log && $log->transcript_status === 'failed')
+                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                                        作成失敗
+                                                    </span>
                                                 @else
-                                                    <span class="text-gray-400">-</span>
+                                                    <span class="text-gray-400 font-medium">-</span>
                                                 @endif
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
-                                                @if($meeting instanceof \App\Models\MeetingLog)
-                                                    <a href="{{ route('student.meeting-logs.show', $meeting) }}" class="text-blue-600 hover:text-blue-900 font-medium">詳細を見る</a>
+                                                @if($isMeeting)
+                                                    <a href="{{ route('student.meetings.show', $item) }}" class="text-blue-600 hover:text-blue-900 font-medium">詳細を見る</a>
                                                 @else
-                                                    <a href="{{ route('student.meetings.show', $meeting) }}" class="text-blue-600 hover:text-blue-900 font-medium">詳細を見る</a>
+                                                    <a href="{{ route('student.meeting-logs.show', $item) }}" class="text-blue-600 hover:text-blue-900 font-medium">詳細を見る</a>
                                                 @endif
                                             </td>
                                         </tr>

@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
 use Illuminate\View\View;
+use App\Utils\AuthUtils;
 
 class RegisteredUserController extends Controller
 {
@@ -35,10 +36,14 @@ class RegisteredUserController extends Controller
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
+        $loginId = AuthUtils::generateLoginId(User::ROLE_STUDENT);
+
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
+            'login_id' => $loginId,
             'password' => Hash::make($request->password),
+            'role' => User::ROLE_STUDENT,
         ]);
 
         event(new Registered($user));

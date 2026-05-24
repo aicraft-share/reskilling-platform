@@ -51,6 +51,99 @@ class SubmissionController extends Controller
             }
         }
 
+        // --- Notification Logic ---
+        try {
+            $user = Auth::user();
+            $teachers = $user->company
+                ? $user->company->teachers()
+                    ->whereNotNull('email')
+                    ->where('notify_assignment_submitted', true)
+                    ->get()
+                : collect();
+
+            foreach ($teachers as $teacher) {
+                \Illuminate\Support\Facades\Mail::to($teacher->email)->send(
+                    new \App\Mail\AssignmentSubmittedMail(
+                        $teacher->name,
+                        $user->name,
+                        $lecturePage->title,
+                        now()->format('Y-m-d H:i')
+                    )
+                );
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Submission Notification Error: ' . $e->getMessage());
+        }
+        // -------------------------
+
         return redirect()->back()->with('success', '課題を提出しました。');
+    }
+
+    public function downloadItem(Request $request, SubmissionItem $item)
+    {
+        // Authorization check
+        $submission = $item->submission;
+        $user = Auth::user();
+
+        // Teachers can download if they are assigned to the student's company
+        if ($user->isTeacher() && !$user->assignedCompanies->contains($submission->user->company_id)) {
+            abort(403);
+        }
+
+        // Students can only download their own submissions
+        if ($user->isStudent() && $submission->user_id !== $user->id) {
+            abort(403);
+        }
+
+        if (!Storage::disk('public')->exists($item->file_path)) {
+            abort(404, 'File not found');
+        }
+
+        $absolutePath = Storage::disk('public')->path($item->file_path);
+
+        return response()->download($absolutePath, $item->original_name, [
+            'Content-Type' => Storage::disk('public')->mimeType($item->file_path),
+            'Content-Disposition' => 'attachment; filename="' . $item->original_name . '"',
+        ]);
+    }
+
+    public function previewItem(Request $request, SubmissionItem $item)
+    {
+        // Authorization check
+        $submission = $item->submission;
+        $user = Auth::user();
+
+        // Teachers can download/preview if they are assigned to the student's company
+        if ($user->isTeacher() && !$user->assignedCompanies->contains($submission->user->company_id)) {
+            abort(403);
+        }
+
+        // Students can only download/preview their own submissions
+        if ($user->isStudent() && $submission->user_id !== $user->id) {
+            abort(403);
+        }
+
+        if (!Storage::disk('public')->exists($item->file_path)) {
+            abort(404, 'File not found');
+        }
+
+        $absolutePath = Storage::disk('public')->path($item->file_path);
+        $mimeType = Storage::disk('public')->mimeType($item->file_path);
+
+        // only certain files should be previewed inline, others should fall back to download
+        $inlinableMimeTypes = [
+            'application/pdf',
+            'image/jpeg',
+            'image/png',
+            'image/gif',
+            'image/webp',
+        ];
+
+        $disposition = in_array($mimeType, $inlinableMimeTypes) ? 'inline' : 'attachment';
+
+        return response()->file($absolutePath, [
+            'Content-Type' => $mimeType,
+            'Content-Disposition' => $disposition . '; filename="' . $item->original_name . '"',
+        ]);
     }
 }

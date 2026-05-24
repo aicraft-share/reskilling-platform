@@ -15,7 +15,11 @@ class MeetingController extends Controller
     public function index(Request $request)
     {
         $query = \App\Models\Meeting::select('meetings.*')
-            ->with(['company', 'creator', 'participants'])
+            ->with([
+                'company' => fn($q) => $q->withTrashed(),
+                'creator' => fn($q) => $q->withTrashed(),
+                'participants'
+            ])
             ->leftJoin('companies', 'meetings.company_id', '=', 'companies.id');
 
         if ($request->filled('search')) {

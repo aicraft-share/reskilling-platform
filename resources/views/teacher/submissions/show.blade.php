@@ -5,7 +5,7 @@
         </h2>
     </x-slot>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8" x-data>
         <!-- Submission Details -->
         <div class="space-y-6">
             <div class="bg-white overflow-hidden shadow-sm rounded-xl border border-slate-200">
@@ -38,12 +38,22 @@
                             <div class="mb-3 p-3 border border-slate-200 rounded-lg">
                                 <p class="text-xs text-slate-500 mb-1">ファイル名: {{ $item->original_name }}</p>
                                 @if($item->file_type == 'image')
-                                    <img src="{{ Storage::url($item->file_path) }}" alt="Submission Image"
+                                    <img src="{{ asset('storage/' . $item->file_path) }}" alt="Submission Image"
                                         class="max-w-full h-auto rounded border border-slate-100 shadow-sm mt-2 mb-2">
                                 @endif
 
-                                <div class="mt-2 text-right">
-                                    <a href="{{ Storage::url($item->file_path) }}" download="{{ $item->original_name }}"
+                                <div class="mt-2 text-right space-x-2">
+                                    <button type="button" @click="$dispatch('open-preview', { url: '{{ route('teacher.submissions.preview', $item) }}', name: '{{ $item->original_name }}' })"
+                                        class="inline-flex items-center px-4 py-2 bg-slate-50 border border-slate-200 rounded-md font-semibold text-xs text-slate-700 hover:bg-slate-100 transition">
+                                        <svg class="w-4 h-4 mr-2 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                        </svg>
+                                        プレビュー
+                                    </button>
+                                    <a href="{{ route('teacher.submissions.download', $item) }}"
                                         class="inline-flex items-center px-4 py-2 bg-blue-50 border border-blue-200 rounded-md font-semibold text-xs text-blue-700 hover:bg-blue-100 transition">
                                         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -59,8 +69,6 @@
                     </div>
                 </div>
             </div>
-        </div>
-
         <!-- Review Form -->
         <div class="bg-white overflow-hidden shadow-sm rounded-xl border border-slate-200 h-fit">
             <div class="p-6 border-b border-slate-100">

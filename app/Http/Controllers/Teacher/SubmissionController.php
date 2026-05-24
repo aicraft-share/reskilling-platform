@@ -60,6 +60,22 @@ class SubmissionController extends Controller
             'reviewed_by' => Auth::id(),
         ]);
 
+        // --- Notification Logic ---
+        try {
+            $student = $submission->user;
+            
+            if ($student && $student->email && $student->notify_feedback_posted) {
+                \Illuminate\Support\Facades\Mail::to($student->email)->send(new \App\Mail\FeedbackPostedMail(
+                    $student->name,
+                    $submission->lecturePage->title,
+                    $submission->status
+                ));
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Feedback Notification Error: ' . $e->getMessage());
+        }
+        // -------------------------
+
         return redirect()->route('teacher.submissions.index')->with('success', 'レビューを登録しました。');
     }
 }

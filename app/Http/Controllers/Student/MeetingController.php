@@ -18,22 +18,46 @@ class MeetingController extends Controller
         $user = Auth::user();
 
         // 1. Get Scheduled Meetings (Participant)
+        // Load 'meetingLog' so we can show recording/summary info on the same row
         $meetings = $user->participatingMeetings()
-            ->with(['company', 'creator'])
-            ->get();
+            ->with([
+                'company' => fn($q) => $q->withTrashed(),
+                'creator' => fn($q) => $q->withTrashed(),
+                'meetingLog',
+            ])
+            ->get()
+            ->map(function ($m) {
+                $m->_type = 'meeting';
+                // Add a common key for deduplication: the log ID if it exists
+                $m->_dedupe_key = $m->meeting_log_id ? "log-{$m->meeting_log_id}" : "mtg-{$m->id}";
+                return $m;
+            });
 
-        // 2. Get Meeting Logs (Participant via pivot)
-        // Note: MeetingLog uses 'students' relationship (belongsToMany)
+        // 2. Get orphan MeetingLogs (Logs not linked to a Meeting record)
         $logs = \App\Models\MeetingLog::whereHas('students', function ($q) use ($user) {
             $q->where('users.id', $user->id);
         })
-            ->with(['company', 'creator'])
-            ->get();
+            ->whereDoesntHave('meeting')
+            ->with([
+                'company' => fn($q) => $q->withTrashed(),
+                'creator' => fn($q) => $q->withTrashed(),
+            ])
+            ->get()
+            ->map(function ($l) {
+                $l->_type = 'log';
+                // Add a common key for deduplication: its own ID
+                $l->_dedupe_key = "log-{$l->id}";
+                return $l;
+            });
 
-        // 3. Merge and Sort
-        $merged = $meetings->concat($logs)->sortByDesc(function ($item) {
-            return $item->scheduled_at;
-        });
+        // 3. Merge, Deduplicate, and Sort
+        // Using unique() on the collection ensures that even if DB relationships are inconsistent,
+        // we only show one row per physical meeting.
+        $merged = $meetings->concat($logs)
+            ->unique('_dedupe_key')
+            ->sortByDesc(function ($item) {
+                return $item->scheduled_at ?? $item->started_at; 
+            });
 
         // Hide sensitive fields for all items
         $merged->each(function ($item) {

@@ -22,6 +22,11 @@ class LectureController extends Controller
             ->with(['items', 'reviewer'])
             ->get();
 
-        return view('student.lectures.show', compact('lecturePage', 'existingSubmissions'));
+        $videoProgress = \App\Models\LectureVideoProgress::firstOrCreate(
+            ['user_id' => Auth::id(), 'lecture_page_id' => $lecturePage->id],
+            ['max_position_seconds' => 0, 'progress_percent' => 0]
+        );
+
+        return view('student.lectures.show', compact('lecturePage', 'existingSubmissions', 'videoProgress'));
     }
 }

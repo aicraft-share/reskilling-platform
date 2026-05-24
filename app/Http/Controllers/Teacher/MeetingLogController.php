@@ -13,42 +13,50 @@ use Illuminate\Support\Facades\DB;
 class MeetingLogController extends Controller
 {
     /**
-     * Display a listing of the resource for a specific student.
+     * Display the MTG Management Dashboard.
      */
-    public function index(Request $request, User $student)
-    {
-        // Redirect to Hub as main entry point
-        return redirect()->route('teacher.students.mtgs', $student);
-    }
-
-    /**
-     * Display the MTG Hub (Create Form + List) for a specific student.
-     */
-    public function hub(Request $request, User $student)
+    public function index(Request $request, ?\App\Models\User $student = null)
     {
         $user = Auth::user();
 
-        // 1. Security Check: Teacher must be assigned to the student's company
-        if (!$user->assignedCompanies()->where('companies.id', $student->company_id)->exists()) {
-            abort(403, 'この生徒のMTGログを閲覧する権限がありません。');
+        // 1. Prepare Data for Create Form
+        $assignedCompanies = $user->assignedCompanies()->with([
+            'students' => function ($query) {
+                $query->select('users.id', 'users.company_id', 'users.name');
+            }
+        ])->get();
+
+        $selectedCompanyId = old('company_id');
+        $selectedStudentId = old('students') ? (is_array(old('students')) ? old('students')[0] : old('students')) : null;
+
+        if ($student && $student->exists) {
+            // Validate if teacher belongs to student's company
+            if (!$assignedCompanies->contains('id', $student->company_id)) {
+                abort(403, 'この生徒のMTGログを作成する権限がありません。');
+            }
+            $selectedCompanyId = $selectedCompanyId ?? $student->company_id;
+            $selectedStudentId = $selectedStudentId ?? $student->id;
         }
 
-        // 2. Get Logs (for List)
-        $logs = MeetingLog::whereHas('students', function ($query) use ($student) {
-            $query->where('users.id', $student->id);
-        })
-            ->where('company_id', $student->company_id)
-            ->with(['students:id,name']) // Eager load students (id, name only)
+        // 2. Get Logs for List
+        $companyIds = $assignedCompanies->pluck('id');
+        $logsQuery = MeetingLog::whereIn('company_id', $companyIds);
+
+        // If a specific student is being viewed, filter logs to that student
+        if ($student && $student->exists) {
+            $logsQuery->whereHas('students', function ($q) use ($student) {
+                $q->where('users.id', $student->id);
+            });
+        }
+
+        $logs = $logsQuery->with(['students:id,name', 'company:id,name'])
             ->orderBy('started_at', 'desc')
             ->paginate(20);
 
-        // 3. Prepare Data for Create Form (though view uses $student relations)
-        $assignedCompanies = $user->assignedCompanies;
-
-        // Default Time: Next hour 00:00
+        // 3. Default Time for Form
         $defaultTime = now()->setTimezone('Asia/Tokyo')->addHour()->startOfHour()->format('Y-m-d\TH:i');
 
-        return view('teacher.meeting_logs.hub', compact('student', 'logs', 'assignedCompanies', 'defaultTime'));
+        return view('teacher.meeting_logs.index', compact('logs', 'assignedCompanies', 'selectedCompanyId', 'selectedStudentId', 'student'));
     }
 
     /**
@@ -56,41 +64,17 @@ class MeetingLogController extends Controller
      */
     public function create(Request $request)
     {
-        // Redirect to Hub if student is specified
+        // Redirect to unified index
         if ($request->route('student')) {
             return redirect()->route('teacher.students.mtgs', $request->route('student'));
         }
-        $user = Auth::user();
-        // Optimize: Select only necessary columns for students to reduce memory usage
-        $assignedCompanies = $user->assignedCompanies()->with([
-            'students' => function ($query) {
-                $query->select('users.id', 'users.company_id', 'users.name');
-            }
-        ])->get();
-
-        $selectedStudent = null;
-        $selectedCompanyId = null;
-
-        // If accessed via student route
-        if ($request->route('student')) {
-            $studentId = $request->route('student');
-            $selectedStudent = User::where('id', $studentId)->where('role', User::ROLE_STUDENT)->firstOrFail();
-
-            // Check if teacher is assigned to this student's company
-            if (!$assignedCompanies->contains('id', $selectedStudent->company_id)) {
-                abort(403, 'この生徒のMTGログを作成する権限がありません。');
-            }
-
-            $selectedCompanyId = $selectedStudent->company_id;
-        }
-
-        return view('teacher.meeting_logs.create', compact('assignedCompanies', 'selectedStudent', 'selectedCompanyId'));
+        return redirect()->route('teacher.meeting-logs.index');
     }
 
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request, \App\Services\ZoomService $zoomService)
+    public function store(Request $request, \App\Services\Zoom\ZoomClient $zoomClient)
     {
         $request->validate([
             'company_id' => 'required|exists:companies,id',
@@ -99,7 +83,6 @@ class MeetingLogController extends Controller
             'title' => 'required|string|max:255',
             'started_at' => 'required|date',
             'youtube_url' => 'nullable|url',
-            // 'zoom_meeting_id' is no longer in input, it is generated
             'memo' => 'nullable|string',
         ]);
 
@@ -120,41 +103,19 @@ class MeetingLogController extends Controller
             return back()->withInput()->withErrors(['students' => '選択された生徒の中に、指定された企業に所属していない生徒が含まれています。']);
         }
 
-        // Zoom Logic
-        $zoomMeetingId = null;
-        $zoomJoinUrl = null;
-        $zoomStartUrl = null;
-        $zoomStatus = 'scheduled'; // Default status
-
+        // Zoom Logic: Simplified via unified ZoomClient
         try {
             DB::beginTransaction();
 
-            // Prepare Zoom Meeting Data
-            $mode = config('zoom.mode', 'mock');
+            $meetingData = $zoomClient->createMeeting(
+                $request->title,
+                \Carbon\Carbon::parse($request->started_at)->toIso8601String(),
+                60 // Default duration
+            );
 
-            if ($mode === 'production') {
-                // Production: Call Zoom API
-                // Default duration 60 mins as it's not in form
-                $meetingData = $zoomService->createMeeting(
-                    $request->title,
-                    \Carbon\Carbon::parse($request->started_at)->toIso8601String(),
-                    60
-                );
-
-                $zoomMeetingId = $meetingData['id'];
-                $zoomJoinUrl = $meetingData['join_url'];
-                $zoomStartUrl = $meetingData['start_url'] ?? null;
-                $zoomStatus = 'scheduled';
-
-            } else {
-                // Mock: URLs are null, status is scheduled (but displayed as Not Issued)
-                $zoomMeetingId = null;
-                $zoomJoinUrl = null;
-                $zoomStartUrl = null;
-                // Actually user said: "zoom_join_url / zoom_start_url は null のまま保存"
-                // "zoom_status は 'scheduled' でもOK（ただしURL未発行表示にする）"
-                // So I will set status to 'scheduled' to indicate it is a valid meeting intent, but URLs are missing (mock/pending).
-                $zoomStatus = 'scheduled';
+            if (!$meetingData) {
+                // If createMeeting returns null, it means a real API error occurred (not mock)
+                throw new \Exception('Zoomミーティングの作成に失敗しました。認証情報を確認してください。');
             }
 
             $log = MeetingLog::create([
@@ -162,10 +123,10 @@ class MeetingLogController extends Controller
                 'title' => $request->title,
                 'started_at' => $request->started_at,
                 'youtube_url' => $request->youtube_url,
-                'zoom_meeting_id' => $zoomMeetingId,
-                'zoom_join_url' => $zoomJoinUrl,
-                'zoom_start_url' => $zoomStartUrl,
-                'zoom_status' => $zoomStatus,
+                'zoom_meeting_id' => $meetingData['id'],
+                'zoom_join_url' => $meetingData['join_url'],
+                'zoom_start_url' => $meetingData['start_url'] ?? null,
+                'zoom_status' => 'scheduled',
                 'memo' => $request->memo,
                 'created_by' => $user->id,
             ]);
@@ -174,7 +135,7 @@ class MeetingLogController extends Controller
 
             DB::commit();
 
-            return back()->with('success', 'MTGログを作成しました。Zoomステータス: ' . $mode);
+            return redirect()->route('teacher.meeting-logs.index')->with('success', 'MTGログを作成しました。');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -214,21 +175,17 @@ class MeetingLogController extends Controller
             'title' => 'required|string|max:255',
             'youtube_url' => 'nullable|url',
             'memo' => 'nullable|string',
+            'transcript_summary' => 'nullable|string',
         ]);
 
         $meetingLog->update([
             'title' => $request->title,
             'youtube_url' => $request->youtube_url,
             'memo' => $request->memo,
+            'transcript_summary' => $request->has('transcript_summary') ? $request->transcript_summary : $meetingLog->transcript_summary,
         ]);
 
-        // Redirect back to the hub if possible
-        $student = $meetingLog->students->first();
-        if ($student) {
-            return redirect()->route('teacher.students.mtgs', $student)->with('success', 'MTGログを更新しました。');
-        }
-
-        return redirect()->route('teacher.meeting-logs.index')->with('success', 'MTGログを更新しました。');
+        return redirect()->route('teacher.meeting-logs.show', $meetingLog)->with('success', 'MTGログを更新しました。');
     }
 
     /**

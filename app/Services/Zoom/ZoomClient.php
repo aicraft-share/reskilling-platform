@@ -11,13 +11,16 @@ class ZoomClient
     private ?string $accountId = null;
     private ?string $clientId = null;
     private ?string $clientSecret = null;
+    private ?string $hostUserId = null;
     private string $baseUrl = 'https://api.zoom.us/v2';
 
     public function __construct()
     {
-        $this->accountId = config('services.zoom.account_id');
-        $this->clientId = config('services.zoom.client_id');
-        $this->clientSecret = config('services.zoom.client_secret');
+        // Try config/services.php first, then fallback to config/zoom.php if needed (transitional)
+        $this->accountId = config('services.zoom.account_id') ?? config('zoom.account_id');
+        $this->clientId = config('services.zoom.client_id') ?? config('zoom.client_id');
+        $this->clientSecret = config('services.zoom.client_secret') ?? config('zoom.client_secret');
+        $this->hostUserId = config('services.zoom.host_user_id') ?? config('zoom.host_user_id', 'me');
     }
 
     /**
@@ -25,20 +28,33 @@ class ZoomClient
      */
     public function getAccessToken(): ?string
     {
-        return Cache::remember('zoom_access_token', 3500, function () {
-            $response = Http::asForm()
-                ->withBasicAuth($this->clientId, $this->clientSecret)
-                ->post('https://zoom.us/oauth/token', [
-                    'grant_type' => 'account_credentials',
-                    'account_id' => $this->accountId,
-                ]);
+        if (empty($this->accountId) || empty($this->clientId) || empty($this->clientSecret)) {
+            return null;
+        }
 
-            if ($response->failed()) {
-                Log::error('Zoom OAuth Failed', $response->json());
+        return Cache::remember('zoom_access_token', 3500, function () {
+            try {
+                $response = Http::asForm()
+                    ->withOptions([
+                    'curl' => [CURLOPT_SSL_VERIFYPEER => false],
+                    'crypto_method' => null
+                ])
+                    ->withBasicAuth($this->clientId, $this->clientSecret)
+                    ->post('https://zoom.us/oauth/token', [
+                        'grant_type' => 'account_credentials',
+                        'account_id' => $this->accountId,
+                    ]);
+
+                if ($response->failed()) {
+                    Log::error('Zoom OAuth Failed', ['body' => $response->body(), 'status' => $response->status()]);
+                    return null;
+                }
+
+                return $response->json('access_token');
+            } catch (\Exception $e) {
+                Log::error('Zoom OAuth Exception: ' . $e->getMessage());
                 return null;
             }
-
-            return $response->json('access_token');
         });
     }
 
@@ -47,9 +63,11 @@ class ZoomClient
      */
     public function createMeeting(string $topic, string $startTime, int $durationMinutes): ?array
     {
-        // Check if credentials exist
-        if (empty($this->accountId) || empty($this->clientId) || empty($this->clientSecret)) {
-            Log::warning('Zoom Credentials missing. Running in MOCK MODE.');
+        $token = $this->getAccessToken();
+
+        // Check if token exists (if not, we are likely in MOCK MODE or credentials failed)
+        if (!$token) {
+            Log::warning('Zoom Credentials missing or invalid. Running in MOCK MODE.');
 
             // Mock Response
             $mockId = rand(1000000000, 9999999999);
@@ -62,40 +80,41 @@ class ZoomClient
             ];
         }
 
-        $token = $this->getAccessToken();
-        if (!$token) {
+        $userId = $this->hostUserId;
+
+        try {
+            $response = Http::withToken($token)
+                ->withOptions([
+                    'curl' => [CURLOPT_SSL_VERIFYPEER => false],
+                    'crypto_method' => null
+                ])
+                ->post("{$this->baseUrl}/users/{$userId}/meetings", [
+                    'topic' => $topic,
+                    'type' => 2, // Scheduled Meeting
+                    'start_time' => $startTime, // ISO 8601
+                    'duration' => $durationMinutes,
+                    'timezone' => 'Asia/Tokyo',
+                    'settings' => [
+                        'host_video' => true,
+                        'participant_video' => true,
+                        'join_before_host' => false,
+                        'mute_upon_entry' => true,
+                        'waiting_room' => true,
+                        'auto_recording' => 'cloud',
+                    ],
+                ]);
+
+            if ($response->failed()) {
+                Log::error('Zoom Create Meeting Failed', ['body' => $response->body(), 'status' => $response->status()]);
+                // If it fails with real creds, we return null to let controller handle the error
+                return null;
+            }
+
+            return $response->json();
+        } catch (\Exception $e) {
+            Log::error('Zoom Create Meeting Exception: ' . $e->getMessage());
             return null;
         }
-
-        // Use 'me' if the account ID belongs to the owner, otherwise we need a specific user ID.
-        // For S2S, usually we need to specify the user ID. 
-        // We will default to the user specified in config, or try 'me' context if possible, 
-        // but often S2S 'me' is invalid. Let's use a config value for HOST_USER_ID or fetch the first user.
-        // For simplicity in MVP, we assume we configure the host user ID.
-        $userId = config('services.zoom.host_user_id');
-
-        $response = Http::withToken($token)
-            ->post("{$this->baseUrl}/users/{$userId}/meetings", [
-                'topic' => $topic,
-                'type' => 2, // Scheduled Meeting
-                'start_time' => $startTime, // ISO 8601
-                'duration' => $durationMinutes,
-                'timezone' => 'Asia/Tokyo',
-                'settings' => [
-                    'host_video' => true,
-                    'participant_video' => true,
-                    'join_before_host' => false,
-                    'mute_upon_entry' => true,
-                    'waiting_room' => true,
-                ],
-            ]);
-
-        if ($response->failed()) {
-            Log::error('Zoom Create Meeting Failed', $response->json());
-            return null;
-        }
-
-        return $response->json();
     }
 
     /**
@@ -103,25 +122,93 @@ class ZoomClient
      */
     public function deleteMeeting(string $meetingId): bool
     {
-        // Mock Mode check
-        if (empty($this->accountId) || empty($this->clientId) || empty($this->clientSecret)) {
+        $token = $this->getAccessToken();
+        if (!$token) {
             Log::warning('running in MOCK MODE: Meeting deleted.');
             return true;
         }
 
+        try {
+            $response = Http::withToken($token)
+                ->withOptions([
+                    'curl' => [CURLOPT_SSL_VERIFYPEER => false],
+                    'crypto_method' => null
+                ])
+                ->delete("{$this->baseUrl}/meetings/{$meetingId}");
+
+            if ($response->failed() && $response->status() !== 404) {
+                Log::error('Zoom Delete Meeting Failed', $response->json());
+                return false;
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            Log::error('Zoom Delete Meeting Exception: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Get Participants (merged from old ZoomService)
+     */
+    public function getParticipants(string $meetingId): array
+    {
         $token = $this->getAccessToken();
-        if (!$token) {
-            return false;
+        if (!$token) return [];
+
+        try {
+            // Double encode if it contains '/' (UUID)
+            if (str_contains($meetingId, '/') || str_contains($meetingId, '+')) {
+                $meetingId = urlencode(urlencode($meetingId));
+            }
+
+            $response = Http::withToken($token)
+                ->withOptions([
+                    'curl' => [CURLOPT_SSL_VERIFYPEER => false],
+                    'crypto_method' => null
+                ])
+                ->get("{$this->baseUrl}/report/meetings/{$meetingId}/participants?page_size=300");
+
+            if ($response->failed()) {
+                Log::error('Zoom Get Participants Failed', ['body' => $response->body(), 'status' => $response->status()]);
+                return [];
+            }
+
+            return $response->json('participants') ?? [];
+        } catch (\Exception $e) {
+            Log::error('Zoom Get Participants Exception: ' . $e->getMessage());
+            return [];
         }
+    }
 
-        $response = Http::withToken($token)
-            ->delete("{$this->baseUrl}/meetings/{$meetingId}");
+    /**
+     * Get Past Meeting Details (merged from old ZoomService)
+     */
+    public function getPastMeeting(string $meetingId): ?array
+    {
+        $token = $this->getAccessToken();
+        if (!$token) return null;
 
-        if ($response->failed() && $response->status() !== 404) {
-            Log::error('Zoom Delete Meeting Failed', $response->json());
-            return false;
+        try {
+            // Double encode if it contains '/' (UUID)
+            if (str_contains($meetingId, '/') || str_contains($meetingId, '+')) {
+                $meetingId = urlencode(urlencode($meetingId));
+            }
+
+            $response = Http::withToken($token)
+                ->withOptions(['curl' => [CURLOPT_SSL_VERIFYPEER => false]])
+                ->get("{$this->baseUrl}/past_meetings/{$meetingId}");
+
+            if ($response->failed()) {
+                if ($response->status() === 404) return null;
+                Log::error('Zoom Get Past Meeting Failed', ['body' => $response->body(), 'status' => $response->status()]);
+                return null;
+            }
+
+            return $response->json();
+        } catch (\Exception $e) {
+            Log::error('Zoom Get Past Meeting Exception: ' . $e->getMessage());
+            return null;
         }
-
-        return true;
     }
 }

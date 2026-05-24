@@ -13,7 +13,9 @@ class CompanyController extends Controller
 
     public function index(Request $request)
     {
-        $query = Company::where('teacher_id', Auth::id())->withCount('students');
+        $query = Company::whereHas('teachers', function ($q) {
+            $q->where('users.id', Auth::id());
+        })->withCount('students');
 
         if ($request->filled('search')) {
             $query->where('name', 'like', '%' . $request->search . '%');
@@ -49,7 +51,7 @@ class CompanyController extends Controller
     public function show(Company $company)
     {
         // Ensure teacher is assigned to this company
-        if ($company->teacher_id !== Auth::id()) {
+        if (!$company->teachers()->where('users.id', Auth::id())->exists()) {
             abort(403);
         }
 
